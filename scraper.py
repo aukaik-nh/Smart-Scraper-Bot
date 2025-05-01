@@ -80,7 +80,8 @@ def crawl_facebook_post():
         driver.find_element(By.ID, 'pass').send_keys(Keys.RETURN)
         time.sleep(5)
 
-        driver.get('https://www.facebook.com/jarpichit')
+        fb_target_url = os.getenv('FB_TARGET_URL')
+        driver.get(fb_target_url)
         time.sleep(5)
 
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
