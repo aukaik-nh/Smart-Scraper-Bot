@@ -10,5 +10,6 @@ COPY . /app
 
 RUN pip install -r requirements.txt
 
+.txt
 
 CMD ["python", "cronjob.py"]
