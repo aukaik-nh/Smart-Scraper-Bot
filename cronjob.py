@@ -1,11 +1,11 @@
 import time
-from scraper import read_facebook_posts_and_store
+from scraper import crawl_facebook_post
 
 def main_loop():
     while True:
         print("\n\n========== Start ==========")
         try:
-            read_facebook_posts_and_store()
+            crawl_facebook_post()
             print("Completed")
         except Exception as e:
             print(f"Error: {e}")
