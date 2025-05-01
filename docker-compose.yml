@@ -2,26 +2,24 @@ version: "3.9"
 
 services:
   scraper:
-    build:
-      context: .
-    container_name: smart-scraper-bot
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      - mongodb
+    build: .
+    container_name: smart_scraper
+    env_file: .env
     volumes:
-      - ./output:/app/output
-    command: ["python", "cronjob.py"]
+      - .:/app
+    depends_on:
+      - mongo
+    command: python cronjob.py
+    environment:
+      - DISPLAY=:99
 
-  mongodb:
-    image: mongo:6.0
-    container_name: mongo-db
-    restart: unless-stopped
+  mongo:
+    image: mongo:5.0
+    container_name: smart_mongo
     ports:
       - "27017:27017"
     volumes:
-      - mongo-data:/data/db
+      - mongo_data:/data/db
 
 volumes:
-  mongo-data:
+  mongo_data:
