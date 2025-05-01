@@ -1,8 +1,15 @@
 # Smart-Scraper-Bot
 
+1. ติดตั้ง MongoDB 
+    - ดาวน์โหลด MongoDB (https://www.mongodb.com/try/download/community)
+    - รัน MongoDB: `mongodb://localhost:27017/`
 
-1. cp .env.example .env
+2. pip install -r requirements.txt
 
-2. ใส่ข้อมูลลงในไฟล์ .env
+3. cp .env.example .env
 
-3. python scraper.py   
+4. ใส่ข้อมูลลงในไฟล์ .env
+
+5. python scraper.py   
+
+ 
