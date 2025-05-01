@@ -67,6 +67,8 @@ def crawl_facebook_post():
     client = MongoClient(mongo_uri)
     db = client['smart-db']
     collection = db['posts']
+    
+    collection.create_index("post_id", unique=True)
 
     options = webdriver.ChromeOptions()
     options.add_argument('--start-maximized')
@@ -94,8 +96,6 @@ def crawl_facebook_post():
 
         for idx in range(len(posts)):
             try:
-                post_id_str = f'post_{idx}_{int(time.time())}'
-
                 for _ in range(3):
                     try:
                         post = posts[idx]
@@ -110,8 +110,9 @@ def crawl_facebook_post():
                             pass
 
                         try:
-                            link = post.find_element(By.XPATH, './/a[contains(@href, "/posts/")]')
-                            driver.execute_script("arguments[0].click();", link)
+                            link_element = post.find_element(By.XPATH, './/a[contains(@href, "/posts/")]')
+                            link = link_element.get_attribute('href')
+                            driver.execute_script("arguments[0].click();", link_element)
                             time.sleep(3)
                         except:
                             break
@@ -119,6 +120,12 @@ def crawl_facebook_post():
                     except StaleElementReferenceException:
                         time.sleep(1)
                         posts = driver.find_elements(By.XPATH, '//div[@role="article"]')
+
+                post_id_str = link.split('/')[-1]
+
+                if collection.find_one({'post_id': post_id_str}):
+                    print(f"โพสต์ {post_id_str} มีอยู่แล้ว ข้าม...")
+                    continue
 
                 try:
                     username = WebDriverWait(driver, 5).until(
@@ -162,7 +169,8 @@ def crawl_facebook_post():
                     })
                     saved_count += 1
 
-            except:
+            except Exception as e:
+                print(f"เกิดข้อผิดพลาดกับโพสต์ที่ {idx}: {e}")
                 continue
 
         print(f"เก็บโพสต์สำเร็จจำนวน {saved_count} โพสต์")
