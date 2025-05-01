@@ -5,69 +5,60 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import StaleElementReferenceException
 from datetime import datetime, timezone
 import os
 import time
 
-def get_all_comments_from_popup(driver):
+def get_comments(driver):
     try:
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//div[@role="dialog"]')))
-        dialog = driver.find_element(By.XPATH, '//div[@role="dialog"]')
+        container = driver.find_element(By.XPATH, '//div[@role="dialog"]') if driver.find_elements(By.XPATH, '//div[@role="dialog"]') else driver.find_element(By.TAG_NAME, 'body')
 
         while True:
             try:
-                more_comments = dialog.find_element(
-                    By.XPATH,
-                    './/span[contains(text(),"ดูความคิดเห็นเพิ่มเติม") or contains(text(),"See more comments")]'
-                )
+                more_comments = container.find_element(By.XPATH, './/span[contains(text(),"ดูความคิดเห็นเพิ่มเติม") or contains(text(),"See more comments")]')
                 driver.execute_script("arguments[0].click();", more_comments)
-                time.sleep(1.5)
+                time.sleep(2)
             except:
                 break
 
         while True:
             try:
-                more_replies = dialog.find_element(
-                    By.XPATH,
-                    './/span[contains(text(),"ดูการตอบกลับ") or contains(text(),"View more replies")]'
-                )
+                more_replies = container.find_element(By.XPATH, './/span[contains(text(),"ดูการตอบกลับ") or contains(text(),"View more replies")]')
                 driver.execute_script("arguments[0].click();", more_replies)
-                time.sleep(1.5)
+                time.sleep(2)
             except:
                 break
 
-        comment_blocks = dialog.find_elements(
-            By.XPATH,
-            './/div[contains(@class, "x1gslohp")]//div[@role="article"]/div[2]'
-        )
+        time.sleep(5)
 
+        comment_blocks = driver.find_elements(By.XPATH, '//div[contains(@class, "x1gslohp")]//div[@role="article"]/div[2]')
         comments = []
-        for block in comment_blocks:
-            try:
-                commenter_el = block.find_element(By.XPATH, './/a[@role="link"]//span/span')
-                commenter_name = commenter_el.text.strip()
 
-                text_elements = block.find_elements(
-                    By.XPATH, './/div[@dir="auto" and string-length(normalize-space(text())) > 0]'
-                )
-                comment_text = " ".join(e.text.strip() for e in text_elements if e.text.strip())
+        for i in range(len(comment_blocks)):
+            for _ in range(3):
+                try:
+                    block = comment_blocks[i]
+                    commenter_name = block.find_element(By.XPATH, './/a[@role="link"]//span/span').text.strip()
+                    text_elements = block.find_elements(By.XPATH, './/div[@dir="auto" and string-length(normalize-space(text())) > 0]')
+                    comment_text = " ".join(e.text.strip() for e in text_elements if e.text.strip())
 
-                if commenter_name and comment_text:
-                    comments.append({
-                        "user": commenter_name,
-                        "text": comment_text
-                    })
-                    print(f"{commenter_name}: {comment_text}")
-            except:
-                continue
-
+                    if commenter_name and comment_text:
+                        comments.append({
+                            "user": commenter_name,
+                            "text": comment_text
+                        })
+                    break
+                except StaleElementReferenceException:
+                    time.sleep(1)
+                    comment_blocks = driver.find_elements(By.XPATH, '//div[contains(@class, "x1gslohp")]//div[@role="article"]/div[2]')
+                except:
+                    break
         return comments
-    except Exception as e:
-        print(f"ไม่สามารถดึงคอมเมนต์: {e}")
+    except:
         return []
 
-
-def read_facebook_posts_and_store():
+def crawl_facebook_post():
     load_dotenv()
     fb_email = os.getenv('FB_EMAIL')
     fb_password = os.getenv('FB_PASSWORD')
@@ -89,58 +80,60 @@ def read_facebook_posts_and_store():
         driver.find_element(By.ID, 'pass').send_keys(Keys.RETURN)
         time.sleep(5)
 
-        page_url = 'https://www.facebook.com/jarpichit'
-        driver.get(page_url)
+        driver.get('https://www.facebook.com/jarpichit')
         time.sleep(5)
 
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(5)
 
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//div[@role="article"]')))
-        posts = driver.find_elements(By.XPATH, '//div[@role="article"]')
-        posts = posts[:3]
+        posts = driver.find_elements(By.XPATH, '//div[@role="article"]')[:3]
 
-        for idx, post in enumerate(posts):
+        saved_count = 0
+
+        for idx in range(len(posts)):
             try:
                 post_id_str = f'post_{idx}_{int(time.time())}'
 
-                driver.execute_script("arguments[0].scrollIntoView(true);", post)
-                time.sleep(2)
+                for _ in range(3):
+                    try:
+                        post = posts[idx]
+                        driver.execute_script("arguments[0].scrollIntoView(true);", post)
+                        time.sleep(2)
+
+                        try:
+                            see_more = post.find_element(By.XPATH, './/div[contains(text(),"ดูเพิ่มเติม") or contains(text(),"See More")]')
+                            driver.execute_script("arguments[0].click();", see_more)
+                            time.sleep(1)
+                        except:
+                            pass
+
+                        try:
+                            link = post.find_element(By.XPATH, './/a[contains(@href, "/posts/")]')
+                            driver.execute_script("arguments[0].click();", link)
+                            time.sleep(3)
+                        except:
+                            break
+                        break
+                    except StaleElementReferenceException:
+                        time.sleep(1)
+                        posts = driver.find_elements(By.XPATH, '//div[@role="article"]')
 
                 try:
-                    see_more = WebDriverWait(post, 2).until(
-                        EC.element_to_be_clickable((By.XPATH, './/div[contains(text(),"ดูเพิ่มเติม") or contains(text(),"See More")]'))
-                    )
-                    driver.execute_script("arguments[0].click();", see_more)
-                    time.sleep(1)
-                except:
-                    pass
-
-                try:
-                    link = post.find_element(By.XPATH, './/a[contains(@href, "/posts/")]')
-                    driver.execute_script("arguments[0].click();", link)
-                    time.sleep(3)
-                except Exception as e:
-                    print(f"ไม่สามารถเปิดโพสต์ {idx} แบบ popup: {e}")
-                    continue
-
-                try:
-                    username_el = WebDriverWait(driver, 5).until(
+                    username = WebDriverWait(driver, 5).until(
                         EC.presence_of_element_located((By.XPATH, '//div[@role="dialog"]//h2//span//a | //div[@role="dialog"]//h3//span//a'))
-                    )
-                    username = username_el.text
+                    ).text
                 except:
-                    username = "Unknown"
+                    username = ""
 
                 try:
-                    content_el = driver.find_element(By.XPATH, '//div[@role="dialog"]//div[@data-ad-preview="message"]//span')
-                    post_content = content_el.text
+                    post_content = driver.find_element(By.XPATH, '//div[@role="dialog"]//div[@data-ad-preview="message"]//span').text
                 except:
                     post_content = ""
 
                 image_urls = []
                 try:
-                    img_elements = post.find_elements(By.XPATH, './/img[contains(@src, "scontent")]')
+                    img_elements = driver.find_elements(By.XPATH, '//div[@role="dialog"]//img[contains(@src, "scontent")]')
                     for img in img_elements:
                         src = img.get_attribute('src')
                         if src and src not in image_urls:
@@ -148,18 +141,14 @@ def read_facebook_posts_and_store():
                 except:
                     pass
 
-                print(f"โพสต์ {idx} โดย {username}: {post_content}")
-                if image_urls:
-                    print(f" {len(image_urls)} รูป")
-
-                comments = get_all_comments_from_popup(driver)
+                comments = get_comments(driver)
 
                 try:
                     close_btn = driver.find_element(By.XPATH, '//div[@aria-label="ปิด"] | //div[@aria-label="Close"]')
                     driver.execute_script("arguments[0].click();", close_btn)
                     time.sleep(2)
                 except:
-                    print("ไม่สามารถปิด popup ได้")
+                    pass
 
                 if post_content.strip() or comments:
                     collection.insert_one({
@@ -170,15 +159,15 @@ def read_facebook_posts_and_store():
                         'comments': comments,
                         'timestamp': datetime.now(timezone.utc).isoformat() + 'Z'
                     })
-                    print(f"บันทึกโพสต์ {idx} สำเร็จ")
-                else:
-                    print(f"โพสต์ที่ {idx} ไม่มีข้อมูลให้บันทึก")
+                    saved_count += 1
 
-            except Exception as e:
-                print(f"เกิดข้อผิดพลาดในโพสต์ {idx}: {e}")
+            except:
+                continue
+
+        print(f"เก็บโพสต์สำเร็จจำนวน {saved_count} โพสต์")
 
     finally:
         driver.quit()
 
 if __name__ == "__main__":
-    read_facebook_posts_and_store()
+    crawl_facebook_post()
