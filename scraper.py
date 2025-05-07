@@ -9,6 +9,7 @@ from selenium.common.exceptions import StaleElementReferenceException
 from datetime import datetime, timezone
 import os
 import time
+from urllib.parse import urlparse
 
 def get_comments(driver):
     try:
@@ -58,6 +59,13 @@ def get_comments(driver):
     except:
         return []
 
+def extract_post_id(url):
+    path_parts = urlparse(url)._replace(query="", fragment="").path.strip('/').split('/')
+    if 'posts' in path_parts:
+        return path_parts[path_parts.index('posts') + 1]
+    else:
+        return path_parts[-1]
+
 def crawl_facebook_post():
     load_dotenv()
     fb_email = os.getenv('FB_EMAIL')
@@ -90,42 +98,44 @@ def crawl_facebook_post():
         time.sleep(5)
 
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//div[@role="article"]')))
-        posts = driver.find_elements(By.XPATH, '//div[@role="article"]')[:3]
+        posts = driver.find_elements(By.XPATH, '//div[@role="article"]')
 
         saved_count = 0
+        scraped_post_ids = set()
 
-        for idx in range(len(posts)):
+        while len(posts) < 3: 
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(5)
+            posts = driver.find_elements(By.XPATH, '//div[@role="article"]')
+
+        for idx in range(min(3, len(posts))):
             try:
-                for _ in range(3):
-                    try:
-                        post = posts[idx]
-                        driver.execute_script("arguments[0].scrollIntoView(true);", post)
-                        time.sleep(2)
+                post = posts[idx]
+                driver.execute_script("arguments[0].scrollIntoView(true);", post)
+                time.sleep(2)
 
-                        try:
-                            see_more = post.find_element(By.XPATH, './/div[contains(text(),"ดูเพิ่มเติม") or contains(text(),"See More")]')
-                            driver.execute_script("arguments[0].click();", see_more)
-                            time.sleep(1)
-                        except:
-                            pass
+                try:
+                    see_more = post.find_element(By.XPATH, './/div[contains(text(),"ดูเพิ่มเติม") or contains(text(),"See More")]')
+                    driver.execute_script("arguments[0].click();", see_more)
+                    time.sleep(1)
+                except:
+                    pass
 
-                        try:
-                            link_element = post.find_element(By.XPATH, './/a[contains(@href, "/posts/")]')
-                            link = link_element.get_attribute('href')
-                            driver.execute_script("arguments[0].click();", link_element)
-                            time.sleep(3)
-                        except:
-                            break
-                        break
-                    except StaleElementReferenceException:
-                        time.sleep(1)
-                        posts = driver.find_elements(By.XPATH, '//div[@role="article"]')
-
-                post_id_str = link.split('/')[-1]
-
-                if collection.find_one({'post_id': post_id_str}):
-                    print(f"โพสต์ {post_id_str} มีอยู่แล้ว ข้าม...")
+                try:
+                    link_element = post.find_element(By.XPATH, './/a[contains(@href, "/posts/")]')
+                    link = link_element.get_attribute('href')
+                    driver.execute_script("arguments[0].click();", link_element)
+                    time.sleep(3)
+                except:
                     continue
+
+                post_id_str = extract_post_id(link)
+
+                if post_id_str in scraped_post_ids:  
+                    print(f"โพสต์ {post_id_str} มีอยู่แล้ว")
+                    continue
+
+                scraped_post_ids.add(post_id_str) 
 
                 try:
                     username = WebDriverWait(driver, 5).until(
@@ -159,14 +169,18 @@ def crawl_facebook_post():
                     pass
 
                 if post_content.strip() or comments:
-                    collection.insert_one({
-                        'post_id': post_id_str,
-                        'content': post_content,
-                        'images': image_urls,
-                        'username': username,
-                        'comments': comments,
-                        'timestamp': datetime.now(timezone.utc).isoformat() + 'Z'
-                    })
+                    collection.update_one(
+                        {'post_id': post_id_str},
+                        {'$setOnInsert': {
+                            'post_id': post_id_str,
+                            'content': post_content,
+                            'images': image_urls,
+                            'username': username,
+                            'comments': comments,
+                            'timestamp': datetime.now(timezone.utc).isoformat() + 'Z'
+                        }},
+                        upsert=True
+                    )
                     saved_count += 1
 
             except Exception as e:
