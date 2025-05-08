@@ -76,8 +76,6 @@ def crawl_facebook_post():
     db = client['smart-db']
     collection = db['posts']
     
-    collection.create_index("post_id", unique=True)
-
     options = webdriver.ChromeOptions()
     options.add_argument('--start-maximized')
     options.add_argument('--disable-notifications')
@@ -102,15 +100,13 @@ def crawl_facebook_post():
 
         saved_count = 0
         scraped_post_ids = set()
+        i = 0
 
-        while len(posts) < 3: 
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(5)
-            posts = driver.find_elements(By.XPATH, '//div[@role="article"]')
-
-        for idx in range(min(3, len(posts))):
+        while saved_count < 3 and i < len(posts):
             try:
-                post = posts[idx]
+                post = posts[i]
+                i += 1
+
                 driver.execute_script("arguments[0].scrollIntoView(true);", post)
                 time.sleep(2)
 
@@ -124,18 +120,16 @@ def crawl_facebook_post():
                 try:
                     link_element = post.find_element(By.XPATH, './/a[contains(@href, "/posts/")]')
                     link = link_element.get_attribute('href')
+                    post_id_str = extract_post_id(link)
+                    print(f"==> post_id: {post_id_str}")
+                    if post_id_str in scraped_post_ids:
+                        print("ข้ามโพสต์ซ้ำ")
+                        continue
+                    scraped_post_ids.add(post_id_str)
                     driver.execute_script("arguments[0].click();", link_element)
                     time.sleep(3)
                 except:
                     continue
-
-                post_id_str = extract_post_id(link)
-
-                if post_id_str in scraped_post_ids:  
-                    print(f"โพสต์ {post_id_str} มีอยู่แล้ว")
-                    continue
-
-                scraped_post_ids.add(post_id_str) 
 
                 try:
                     username = WebDriverWait(driver, 5).until(
@@ -169,23 +163,21 @@ def crawl_facebook_post():
                     pass
 
                 if post_content.strip() or comments:
-                    collection.update_one(
-                        {'post_id': post_id_str},
-                        {'$setOnInsert': {
-                            'post_id': post_id_str,
-                            'content': post_content,
-                            'images': image_urls,
-                            'username': username,
-                            'comments': comments,
-                            'timestamp': datetime.now(timezone.utc).isoformat() + 'Z'
-                        }},
-                        upsert=True
-                    )
+                    collection.insert_one({
+                        'post_id': post_id_str,
+                        'content': post_content,
+                        'images': image_urls,
+                        'username': username,
+                        'comments': comments,
+                        'timestamp': datetime.now(timezone.utc).isoformat() + 'Z'
+                    })
                     saved_count += 1
+                    print(f" บันทึกโพสต์ {post_id_str} แล้ว")
 
             except Exception as e:
-                print(f"เกิดข้อผิดพลาดกับโพสต์ที่ {idx}: {e}")
+                print(f"เกิดข้อผิดพลาดกับโพสต์ลำดับ {i-1}: {e}")
                 continue
+
 
         print(f"เก็บโพสต์สำเร็จจำนวน {saved_count} โพสต์")
 
